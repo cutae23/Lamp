@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="28" fill="#DDEBE8"/>
+  <rect width="128" height="128" rx="28" fill="#B1D4D0" opacity="0.55"/>
+  <!-- flame -->
+  <path d="M64 20c10 14 16 22 16 32a16 16 0 0 1-32 0c0-6 2-10 5-14-1 6 1 9 4 9 3 0-1-7 3-14 2-4 3-9 4-13z"
+        fill="#52352D"/>
+  <!-- lamp base / bowl -->
+  <path d="M40 76c0-4 3-6 6-6h36c3 0 6 2 6 6 0 12-10 22-24 22s-24-10-24-22z" fill="#52352D"/>
+  <rect x="54" y="98" width="20" height="7" rx="3" fill="#52352D"/>
+  <rect x="46" y="105" width="36" height="7" rx="3" fill="#52352D"/>
+</svg>
