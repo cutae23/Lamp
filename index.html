@@ -568,6 +568,9 @@ function storageSet(key, value){
   try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){}
 }
 const FONT_STEPS = [
+  {verse:18, title:22, votd:18, ui:15, uiSm:14, chap:12, label:"최소"},
+  {verse:22, title:26, votd:20, ui:17, uiSm:16, chap:14, label:"아주 작게"},
+  {verse:26, title:32, votd:24, ui:20, uiSm:18, chap:16, label:"조금 작게"},
   {verse:32, title:40, votd:32, ui:26, uiSm:24, chap:20, label:"작게"},
   {verse:40, title:48, votd:38, ui:30, uiSm:28, chap:23, label:"보통"},
   {verse:48, title:56, votd:44, ui:34, uiSm:32, chap:26, label:"크게"},
@@ -577,7 +580,7 @@ const FONT_STEPS = [
   {verse:80, title:92, votd:74, ui:50, uiSm:48, chap:33, label:"초특대"},
   {verse:90, title:104, votd:84, ui:56, uiSm:54, chap:34, label:"최상"}
 ];
-let fontIdx = 7;
+let fontIdx = 10;
 function applyFont(){
   const s = FONT_STEPS[fontIdx];
   document.documentElement.style.setProperty('--fs-verse', s.verse+'px');
