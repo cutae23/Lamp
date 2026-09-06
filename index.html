@@ -90,9 +90,10 @@
   .reading h2{margin:0 0 10px;font-size:var(--fs-title);font-weight:700;color:#52352D;}
   .reading .ref-en{font-size:11px;color:#7a5a50;letter-spacing:.1em;margin-bottom:6px;}
   .reading .hint{font-size:var(--fs-ui-sm);color:#7a5a50;margin-bottom:16px;}
-  .verse{margin-bottom:4px;line-height:1.85;font-size:var(--fs-verse);position:relative;padding:8px 4px 8px 28px;border-radius:8px;cursor:pointer;}
+  .verse{margin-bottom:4px;line-height:1.85;font-size:var(--fs-verse);position:relative;padding:8px 4px 8px 28px;border-radius:8px;cursor:pointer;transition:background .5s ease;}
   .verse:hover{background:var(--paper-2);}
   .verse.checked{background:#B1D4D0;}
+  .verse.search-hit{background:#FCE8A8 !important;}
   .verse .vnum{position:absolute;left:0;top:8px;font-size:11px;color:#7a5a50;font-weight:bold;}
   .verse .bm{
     font-size:15px;margin-left:8px;
@@ -112,6 +113,13 @@
   .bookmarks .item{background:var(--bg-2);border:none;border-radius:8px;padding:10px 14px;margin-bottom:7px;font-size:12.5px;cursor:pointer;display:flex;justify-content:space-between;}
   .bookmarks .item:hover{background:var(--bg-3);}
   .bookmarks .empty{color:var(--muted);font-size:12.5px;}
+
+  #verseSearchResults{margin-bottom:14px;}
+  #verseSearchResults.empty{color:var(--muted);font-size:12.5px;padding:2px 2px 4px;}
+  #verseSearchResults .item{background:var(--bg-2);border:none;border-radius:8px;padding:10px 14px;margin-bottom:7px;font-size:13px;line-height:1.6;cursor:pointer;}
+  #verseSearchResults .item:hover{background:var(--bg-3);}
+  #verseSearchResults .item .ref{display:block;font-weight:bold;color:var(--muted);font-size:11.5px;letter-spacing:.05em;margin-bottom:3px;}
+  #verseSearchResults .note{color:var(--muted);font-size:11.5px;padding:2px 2px 6px;}
 
   .dailylog{margin-top:24px;}
   .dailylog h3{font-size:12.5px;letter-spacing:.15em;color:var(--muted);text-transform:uppercase;margin-bottom:9px;font-weight:normal;}
@@ -170,6 +178,11 @@
     <div class="row">
       <input id="bookFilter" type="text" placeholder="책 이름 검색 (예: 시편, 요한)">
     </div>
+
+    <div class="row">
+      <input id="verseSearch" type="text" placeholder="구절 내용 검색 (예: 사랑, 빛과 소금)">
+    </div>
+    <div id="verseSearchResults"></div>
 
     <div class="testbtns">
       <button id="otBtn" class="active">구약 (39권)</button>
@@ -256,6 +269,9 @@ const NT = [
   ["베드로전서","1PE",5],["베드로후서","2PE",3],["요한일서","1JN",5],["요한이서","2JN",1],["요한삼서","3JN",1],
   ["유다서","JUD",1],["요한계시록","REV",22]
 ];
+
+const BOOK_BY_ID = {};
+[...OT, ...NT].forEach(b=>{ BOOK_BY_ID[b[1]] = b; });
 
 let testament = 'OT';
 let currentBook = null;
@@ -364,17 +380,17 @@ function renderChapGrid(){
   }
 }
 
-function selectChapter(c){
+function selectChapter(c, focusVerse){
   currentChapter = c;
   renderChapGrid();
-  loadChapter(currentBook, c);
+  loadChapter(currentBook, c, focusVerse);
   const readingEl = document.getElementById('reading');
-  if(readingEl){
+  if(readingEl && !focusVerse){
     readingEl.scrollIntoView({behavior:'smooth', block:'start'});
   }
 }
 
-function loadChapter(book, chapter){
+function loadChapter(book, chapter, focusVerse){
   const el = document.getElementById('reading');
   const verses = (KO_BIBLE[book[1]] && KO_BIBLE[book[1]][chapter-1]) || null;
   if(!verses){
@@ -409,6 +425,16 @@ function loadChapter(book, chapter){
     }
   };
   el.appendChild(readBtn);
+
+  if(focusVerse){
+    const verseDivs = el.querySelectorAll('.verse');
+    const target = verseDivs[focusVerse-1];
+    if(target){
+      target.classList.add('search-hit');
+      setTimeout(()=> target.scrollIntoView({behavior:'smooth', block:'center'}), 60);
+      setTimeout(()=> target.classList.remove('search-hit'), 2600);
+    }
+  }
 }
 
 async function toggleEnglish(div, book, chapter, vnum){
@@ -502,6 +528,104 @@ document.getElementById('ntBtn').onclick = ()=>{
   renderBookList();
 };
 document.getElementById('bookFilter').addEventListener('input', renderBookList);
+
+/* ---------- 구절 내용 검색 ---------- */
+function escapeHtml(s){
+  return s.replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function debounce(fn, wait){
+  let t;
+  return function(...args){
+    clearTimeout(t);
+    t = setTimeout(()=> fn.apply(this, args), wait);
+  };
+}
+function showBrowsePanels(show){
+  const disp = show ? '' : 'none';
+  const tb = document.querySelector('.testbtns');
+  const bl = document.getElementById('bookList');
+  const cg = document.getElementById('chapGrid');
+  if(tb) tb.style.display = disp;
+  if(bl) bl.style.display = disp;
+  if(cg) cg.style.display = disp;
+}
+const VERSE_SEARCH_LIMIT = 80;
+function searchVerseText(raw){
+  const query = raw.trim();
+  const resultsEl = document.getElementById('verseSearchResults');
+  if(query.length === 0){
+    resultsEl.className = '';
+    resultsEl.innerHTML = '';
+    showBrowsePanels(true);
+    return;
+  }
+  showBrowsePanels(false);
+  const matches = [];
+  let truncated = false;
+  outer:
+  for(const bookId in KO_BIBLE){
+    const book = BOOK_BY_ID[bookId];
+    if(!book) continue;
+    const chapters = KO_BIBLE[bookId];
+    for(let ci=0; ci<chapters.length; ci++){
+      const verses = chapters[ci];
+      for(let vi=0; vi<verses.length; vi++){
+        const text = verses[vi];
+        if(text.includes(query)){
+          matches.push({bookId, bookKr:book[0], chapter:ci+1, verseNum:vi+1, text});
+          if(matches.length >= VERSE_SEARCH_LIMIT){ truncated = true; break outer; }
+        }
+      }
+    }
+  }
+  renderVerseSearchResults(matches, query, truncated);
+}
+function renderVerseSearchResults(matches, query, truncated){
+  const el = document.getElementById('verseSearchResults');
+  if(matches.length === 0){
+    el.className = 'empty';
+    el.textContent = '검색 결과가 없습니다.';
+    return;
+  }
+  el.className = '';
+  el.innerHTML = '';
+  matches.forEach(m=>{
+    const idx = m.text.indexOf(query);
+    let snippet = m.text;
+    if(idx >= 0){
+      const start = Math.max(0, idx-15);
+      const end = Math.min(m.text.length, idx+query.length+30);
+      snippet = (start>0?'…':'') + m.text.slice(start,end) + (end<m.text.length?'…':'');
+    }
+    const div = document.createElement('div');
+    div.className = 'item';
+    div.innerHTML = `<span class="ref">${m.bookKr} ${m.chapter}:${m.verseNum}</span>${escapeHtml(snippet)}`;
+    div.onclick = ()=> jumpToVerse(m.bookId, m.chapter, m.verseNum);
+    el.appendChild(div);
+  });
+  if(truncated){
+    const note = document.createElement('div');
+    note.className = 'note';
+    note.textContent = `결과가 많아 처음 ${VERSE_SEARCH_LIMIT}건만 표시합니다. 검색어를 더 구체적으로 입력해보세요.`;
+    el.appendChild(note);
+  }
+}
+function jumpToVerse(bookId, chapter, verseNum){
+  const book = BOOK_BY_ID[bookId];
+  if(!book) return;
+  testament = OT.some(b=>b[1]===bookId) ? 'OT' : 'NT';
+  document.getElementById('otBtn').classList.toggle('active', testament==='OT');
+  document.getElementById('ntBtn').classList.toggle('active', testament==='NT');
+  document.getElementById('verseSearch').value = '';
+  document.getElementById('verseSearchResults').innerHTML = '';
+  document.getElementById('verseSearchResults').className = '';
+  showBrowsePanels(true);
+  selectBook(book);
+  selectChapter(chapter, verseNum);
+}
+document.getElementById('verseSearch').addEventListener('input', debounce((e)=>{
+  searchVerseText(e.target.value);
+}, 150));
 
 document.getElementById('tabBible').onclick = ()=>{
   document.getElementById('tabBible').classList.add('active');
