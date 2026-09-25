@@ -126,6 +126,10 @@
   .dailylog-today{background:var(--accent);color:var(--accent-ink);border-radius:10px;padding:14px 16px;margin-bottom:10px;font-size:var(--fs-ui-sm);font-weight:bold;}
   .dailylog .item{background:var(--bg-2);border-radius:8px;padding:9px 14px;margin-bottom:6px;font-size:12.5px;display:flex;justify-content:space-between;}
   .dailylog .empty{color:var(--muted);font-size:12.5px;}
+  .dailyDetail{background:var(--bg);border:1px solid var(--bg-2);border-radius:8px;padding:8px 14px;margin:-2px 0 8px;font-size:12px;color:var(--muted);}
+  .dailyDetailItem{padding:3px 0;}
+  .dailyDetailItem.clickable{cursor:pointer;color:var(--fg);}
+  .dailyDetailItem.clickable:hover{text-decoration:underline;}
 
   .hymnlist{display:flex;flex-direction:column;gap:8px;margin-bottom:18px;}
   .hymnlist button{text-align:left;background:var(--bg-2);border:none;color:var(--fg);padding:12px 14px;border-radius:10px;font-size:13.5px;cursor:pointer;}
@@ -295,9 +299,26 @@ async function loadDailyLog(){
 function saveDailyLog(){
   storageSet('daily_log_v1', dailyLog);
 }
-function bumpDailyLog(){
+function dailyEntries(d){
+  // Normalizes a day's log into an array of {b, id, c}. Old data (before this
+  // feature) was stored as a plain number, so we turn that into placeholder
+  // items since we can't know what was actually read on those old days.
+  const v = dailyLog[d];
+  if(Array.isArray(v)) return v;
+  if(typeof v === 'number') return Array.from({length: v}, ()=>({b:'(이전 기록)', id:null, c:null}));
+  return [];
+}
+function dailyCount(d){
+  const v = dailyLog[d];
+  if(Array.isArray(v)) return v.length;
+  if(typeof v === 'number') return v;
+  return 0;
+}
+function bumpDailyLog(book, chapter){
   const k = todayKey();
-  dailyLog[k] = (dailyLog[k]||0) + 1;
+  const entries = dailyEntries(k);
+  entries.push({b: book[0], id: book[1], c: chapter});
+  dailyLog[k] = entries;
   saveDailyLog();
   renderDailyLog();
 }
@@ -306,8 +327,16 @@ function renderDailyLog(){
   const listEl = document.getElementById('dailyList');
   if(!todayEl || !listEl) return;
   const tKey = todayKey();
-  const todayCount = dailyLog[tKey] || 0;
+  const todayCount = dailyCount(tKey);
+  todayEl.innerHTML = '';
   todayEl.textContent = `오늘 읽은 장: ${todayCount}장`;
+  if(todayCount>0){
+    todayEl.style.cursor = 'pointer';
+    todayEl.onclick = ()=> toggleDailyDetail(todayEl, tKey);
+  } else {
+    todayEl.style.cursor = '';
+    todayEl.onclick = null;
+  }
   const dates = Object.keys(dailyLog).filter(d=>d!==tKey).sort().reverse();
   if(dates.length===0){
     listEl.className = 'empty';
@@ -319,9 +348,42 @@ function renderDailyLog(){
   dates.slice(0,30).forEach(d=>{
     const row = document.createElement('div');
     row.className = 'item';
-    row.innerHTML = `<span>${d}</span><span>${dailyLog[d]}장</span>`;
+    row.innerHTML = `<span>${d}</span><span>${dailyCount(d)}장</span>`;
+    row.style.cursor = 'pointer';
+    row.onclick = ()=> toggleDailyDetail(row, d);
     listEl.appendChild(row);
   });
+}
+function toggleDailyDetail(rowEl, dateKey){
+  const existing = rowEl.nextElementSibling;
+  if(existing && existing.classList && existing.classList.contains('dailyDetail')){
+    existing.remove();
+    return;
+  }
+  document.querySelectorAll('.dailyDetail').forEach(n=>n.remove());
+  const detail = document.createElement('div');
+  detail.className = 'dailyDetail';
+  const entries = dailyEntries(dateKey);
+  if(entries.length===0){
+    detail.textContent = '읽은 내역이 없습니다.';
+  } else {
+    entries.forEach(en=>{
+      const line = document.createElement('div');
+      line.className = 'dailyDetailItem';
+      const label = en.c ? `${en.b} ${en.c}장` : en.b;
+      line.textContent = label;
+      if(en.id && en.c){
+        line.classList.add('clickable');
+        line.onclick = (e)=>{
+          e.stopPropagation();
+          const bk = BOOK_BY_ID[en.id];
+          if(bk){ selectBook(bk); selectChapter(en.c); window.scrollTo({top:0, behavior:'smooth'}); }
+        };
+      }
+      detail.appendChild(line);
+    });
+  }
+  rowEl.insertAdjacentElement('afterend', detail);
 }
 async function loadReadCounts(){
   try{
@@ -416,7 +478,7 @@ function loadChapter(book, chapter, focusVerse){
   readBtn.textContent = '✓ 다 읽었어요';
   readBtn.onclick = ()=>{
     bumpReadCount(book[1], chapter);
-    bumpDailyLog();
+    bumpDailyLog(book, chapter);
     if(chapter < book[2]){
       selectChapter(chapter+1);
     } else {
